@@ -357,6 +357,10 @@ export const generateTitleIsolated = async (
       }
 
       options.logger.debug(`[title-generator] Sending title prompt (acpSessionId=${acpSessionId})`);
+      // Only the answer to the title prompt is a title candidate. Adapters are free to
+      // stream between `session/new` and the first prompt (startup banners, config-option
+      // echoes), and that text would otherwise be the whole 80-char title.
+      collectedText = '';
       const response = await client?.prompt(acpSessionId, prompt);
       options.logger.debug(
         `[title-generator] Title prompt returned (acpSessionId=${acpSessionId})`

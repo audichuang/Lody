@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ACPSessionId, AcpSessionNotification } from '@lody/shared';
 
+import { startLocalAcpAgent } from './acp-runner';
 import {
   applyTitleConfigOptions,
   extractTitleChunkFromNotification,
+  generateTitleIsolated,
   sanitizeGeneratedTitle,
 } from './title-generator';
+
+vi.mock('./acp-runner', () => ({
+  startLocalAcpAgent: vi.fn(),
+  shutdownLocalAcpAgent: vi.fn(async () => {}),
+}));
 
 const agentMessage = (text: string, phase?: string): AcpSessionNotification => ({
   sessionId: 'title-session',
@@ -108,5 +115,37 @@ describe('applyTitleConfigOptions', () => {
 
     expect(unstableSetSessionModel).toHaveBeenCalledWith('title-session', 'grok-code-fast-1');
     expect(setSessionConfigOption).not.toHaveBeenCalled();
+  });
+});
+
+describe('generateTitleIsolated', () => {
+  it('ignores stream text emitted before the title prompt', async () => {
+    let emit: ((notification: AcpSessionNotification) => void) | undefined;
+    vi.mocked(startLocalAcpAgent).mockImplementation(async (options) => {
+      emit = options.onUpdateMessage;
+      // A pi-style startup banner: benign text that arrives after `session/new`
+      // and before the first prompt.
+      emit(agentMessage('pi 1.2.3 ready - type /help for commands'));
+      return {
+        agentProcess: null,
+        client: {
+          prompt: async () => {
+            emit?.(agentMessage('Fix session title'));
+            return {};
+          },
+        },
+        acpSessionId: 'title-session' as ACPSessionId,
+        sessionResponse: { sessionId: 'title-session' },
+      } as never;
+    });
+
+    const title = await generateTitleIsolated({
+      cliType: 'registry',
+      agentType: 'pi',
+      taskPrompt: 'Session titles show the agent startup banner',
+      logger: { debug: vi.fn() } as never,
+    });
+
+    expect(title).toBe('Fix session title');
   });
 });

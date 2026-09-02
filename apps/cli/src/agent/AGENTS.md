@@ -244,7 +244,10 @@ arrive: context/message-flow.md "Upstream".
   `_meta.lody.titleSource`: accept only `explicit` thread names and ignore its
   first-prompt `fallback`. Codex title-agent chunks require
   `_meta.lody.messagePhase === 'final_answer'`; untyped chunks, provider error/warning
-  payloads, and internal-instruction tails are not title candidates. Each isolated
+  payloads, and internal-instruction tails are not title candidates. Only the answer
+  to the title prompt is: the collected stream is reset immediately before
+  `client.prompt`, so text an adapter emits between `session/new` and that prompt
+  (startup banners, config-option echoes) can never become the title. Each isolated
   run owns and removes a unique temp directory, and concurrent session-title /
   branch-name work reuses one in-flight result. The shared
   `usesAcpProvidedSessionTitle()` predicate hides obsolete provider title
