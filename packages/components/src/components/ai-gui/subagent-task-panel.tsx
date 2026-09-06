@@ -234,7 +234,13 @@ const AgentRow = ({
  * Render it under the task's own row so the children read as part of it, rather than as
  * sibling tasks the session never registered.
  */
-const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
+const SubagentTaskGroup = ({
+  task,
+  isVisible = true,
+}: {
+  task: SubagentTask;
+  isVisible?: boolean;
+}) => {
   const { t } = useTranslation();
   const agents = task.groupProgress?.agents ?? [];
   const phases = task.groupProgress?.phases ?? [];
@@ -246,11 +252,11 @@ const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
     );
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (!ticking) return undefined;
+    if (!ticking || !isVisible) return undefined;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [ticking]);
+  }, [isVisible, ticking]);
   if (agents.length === 0) return null;
   const buckets = phases.length
     ? phases.map((phase) => ({
@@ -300,6 +306,19 @@ const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
   );
 };
 
+export const SubagentTaskDetails = ({
+  task,
+  isVisible = true,
+}: {
+  task: SubagentTask;
+  isVisible?: boolean;
+}) => (
+  <>
+    <SubagentTaskRow task={task} />
+    <SubagentTaskGroup task={task} isVisible={isVisible} />
+  </>
+);
+
 export const SubagentTaskPanel = ({ tasks }: { tasks: readonly SubagentTask[] }) => {
   const { t } = useTranslation();
   const runningCount = useMemo(() => tasks.filter(isRunning).length, [tasks]);
@@ -344,8 +363,7 @@ export const SubagentTaskPanel = ({ tasks }: { tasks: readonly SubagentTask[] })
         <div className="scrollbar-pro mt-0.5 max-h-[22rem] divide-y divide-border/40 overflow-y-auto pl-1 pr-1">
           {tasks.map((task) => (
             <div key={task.taskId}>
-              <SubagentTaskRow task={task} />
-              <SubagentTaskGroup task={task} />
+              <SubagentTaskDetails task={task} />
             </div>
           ))}
         </div>

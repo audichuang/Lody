@@ -4,6 +4,15 @@ What each file in this directory is responsible for. Binding rules live in
 [AGENTS.md](AGENTS.md); the long-form explanations it links to live under
 [`.agents/docs/`](../../../../../.agents/docs/) with the `sessions-` prefix.
 
+## Workflow progress
+
+`workflow-progress-surface.tsx` is the workflow-only surface immediately above
+the Composer info bar. It reads the same Session history, dedupes the latest
+`subagent_task` snapshot per `taskId` before filtering to `groupProgress` present
+and `skipTranscript !== true`, and leaves ordinary tools/background tasks without
+`groupProgress` on their existing transcript path. The parent keys local
+expand/dismiss state by Session; this surface has no durable store.
+
 ## Page shell and tabs
 
 | File | Responsibility |
@@ -44,6 +53,7 @@ What each file in this directory is responsible for. Binding rules live in
 | File | Responsibility |
 | --- | --- |
 | `session-info-bar.tsx`, `session-info-chips.tsx`, `info-chip.tsx` | Canonical cluster + fixed stage bar above the composer |
+| `workflow-progress-surface.tsx` | Workflow-only progress summary and expandable details above the info bar |
 | `session-info-action-state.ts` | Which repository action the context stage offers |
 | `session-status-strip.tsx` | Priority-ordered connection/machine status (story coverage only) |
 | `session-syncing-indicator.tsx` | Catch-up spinner pinned to the bar's right edge |

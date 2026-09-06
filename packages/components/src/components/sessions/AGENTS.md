@@ -102,6 +102,7 @@ changing those files.
   in the bar pulses or relayouts.
 - The Open preview chip stays gated on a real reported preview target, and
   repository actions are priority-ordered and never duplicated below the reply.
+- Workflow-only progress: [contract](README.md#workflow-progress).
 
 ## [Auto review, status slot](../../../../../.agents/docs/sessions-auto-review.md)
 

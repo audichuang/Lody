@@ -195,6 +195,7 @@ import { RenameSessionDialog, type RenameSessionDialogTarget } from './rename-se
 import { useResolvedTheme } from '../../theme-provider';
 import { PullRequestBadge } from './pull-request-badge';
 import { SessionInfoBar } from './session-info-bar';
+import { WorkflowProgressSurface } from './workflow-progress-surface';
 import type { ContextChipAction, PrCiRun } from './session-info-chips';
 import {
   resolveSessionInfoBarGitHubActionIds,
@@ -5923,6 +5924,12 @@ export const SessionChatInterface = memo(
                       />
                     </ConversationColumn>
                   ) : null}
+
+                  <WorkflowProgressSurface
+                    key={session.id}
+                    history={sessionHistory}
+                    isVisible={isVisible}
+                  />
 
                   {/* Session info bar (desktop AND mobile): the canonical
                       cluster + fixed stage row merging status, goal, schedule,
