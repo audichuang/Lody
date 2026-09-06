@@ -35,6 +35,35 @@ const SubagentTaskUsageSchema = z.object({
   durationMs: z.number().optional(),
 });
 
+/**
+ * Provider-neutral shape of a task that orchestrates other agents. An agent that runs a
+ * script, a swarm or a plan publishes its own structure here; Lody renders the grouping
+ * without knowing whose it is. Every field but the identity is optional because a provider
+ * fills only what it actually tracks.
+ *
+ * `state` is the same enum as the task's own `status`, so the panel has one state
+ * vocabulary for a task and for the agents inside it. A provider's own words are its
+ * producer's to normalize before they reach here.
+ */
+const SubagentTaskGroupProgressSchema = z.object({
+  phases: z.array(z.object({ index: z.number(), title: z.string() })).optional(),
+  agents: z
+    .array(
+      z.object({
+        index: z.number(),
+        label: z.string(),
+        phaseIndex: z.number().optional(),
+        state: z.enum(SUBAGENT_TASK_STATUSES),
+        tokens: z.number().optional(),
+        durationMs: z.number().optional(),
+        promptPreview: z.string().optional(),
+      })
+    )
+    .optional(),
+});
+
+export type SubagentTaskGroupProgress = z.infer<typeof SubagentTaskGroupProgressSchema>;
+
 /** Runtime validator for a persisted `subagent_task` payload (foreign data). */
 export const SubagentTaskPayloadSchema = z.object({
   taskId: z.string().min(1),
@@ -59,6 +88,7 @@ export const SubagentTaskPayloadSchema = z.object({
   error: z.string().optional(),
   skipTranscript: z.boolean().optional(),
   hasOutputFile: z.boolean().optional(),
+  groupProgress: SubagentTaskGroupProgressSchema.optional(),
 });
 
 const LodyTaskMetaSchema = z.object({
@@ -78,6 +108,7 @@ const LodyTaskMetaSchema = z.object({
   lastToolName: z.string().optional(),
   usage: SubagentTaskUsageSchema.optional(),
   skipTranscript: z.boolean().optional(),
+  groupProgress: SubagentTaskGroupProgressSchema.optional(),
 });
 
 /** Read a provider-neutral task lifecycle snapshot from `_meta.lody.task`. */
@@ -107,6 +138,7 @@ export const parseLodyTaskMeta = (meta: unknown): SubagentTaskPayload | null => 
     ...(task.usage !== undefined ? { usage: task.usage } : {}),
     isBackgrounded: task.kind === 'background',
     ...(task.skipTranscript !== undefined ? { skipTranscript: task.skipTranscript } : {}),
+    ...(task.groupProgress !== undefined ? { groupProgress: task.groupProgress } : {}),
   };
 };
 

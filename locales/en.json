@@ -1650,6 +1650,7 @@
   "sessions.subagentTasks.done": "Done",
   "sessions.subagentTasks.failed": "Failed",
   "sessions.subagentTasks.background": "Background",
+  "sessions.subagentTasks.phasePending": "Not started",
   "sessions.fixPrComment": "Fix PR Comments",
   "sessions.goal.actions.clear": "Clear",
   "sessions.goal.actions.dismiss": "Dismiss goal banner",

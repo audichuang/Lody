@@ -1650,6 +1650,7 @@
   "sessions.subagentTasks.done": "已完成",
   "sessions.subagentTasks.failed": "失败",
   "sessions.subagentTasks.background": "后台",
+  "sessions.subagentTasks.phasePending": "未开始",
   "sessions.fixPrComment": "处理 PR 评论",
   "sessions.goal.actions.clear": "清除",
   "sessions.goal.actions.dismiss": "关闭 Goal 横幅",

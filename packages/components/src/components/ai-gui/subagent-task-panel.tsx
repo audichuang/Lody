@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronRight, CircleDashed, Loader2, X } from 'lucide-react';
 import type { MessageContent } from '@lody/shared';
+import { formatCompactNumber } from '@/lib/format-compact-number';
+import { formatDurationCompact, type DurationUnitLabels } from '@/lib/format-duration';
+import { toIntlLocaleOrEn } from '@/lib/intl-locale';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/ui/badge';
 
@@ -33,15 +36,31 @@ export const collectSubagentTasks = (items: readonly MessageContent[]): Subagent
   return [...byId.values()];
 };
 
-const formatUsage = (usage: SubagentTask['usage']): string | null => {
+/**
+ * Compact units follow the product language, never the host OS locale — see
+ * `lib/format-compact-number.ts`. Both the task row and the agent rows below format
+ * tokens through here so the two cannot drift apart.
+ */
+const formatTokens = (value: number, locale: string): string => formatCompactNumber(value, locale);
+
+/** Locale and duration words for every number this panel prints. */
+const useNumberFormatting = () => {
+  const { t, i18n } = useTranslation();
+  return {
+    locale: toIntlLocaleOrEn(i18n.resolvedLanguage ?? i18n.language),
+    durationUnits: {
+      hour: t('time.unitShort.hour', 'h'),
+      minute: t('time.unitShort.minute', 'm'),
+      second: t('time.unitShort.second', 's'),
+    } satisfies DurationUnitLabels,
+  };
+};
+
+const formatUsage = (usage: SubagentTask['usage'], locale: string): string | null => {
   if (!usage) return null;
   const parts: string[] = [];
   if (typeof usage.totalTokens === 'number') {
-    parts.push(
-      usage.totalTokens >= 1000
-        ? `${(usage.totalTokens / 1000).toFixed(1)}k tokens`
-        : `${usage.totalTokens} tokens`
-    );
+    parts.push(`${formatTokens(usage.totalTokens, locale)} tokens`);
   }
   if (typeof usage.toolUses === 'number') {
     parts.push(`${usage.toolUses} ${usage.toolUses === 1 ? 'tool' : 'tools'}`);
@@ -49,17 +68,22 @@ const formatUsage = (usage: SubagentTask['usage']): string | null => {
   return parts.length ? parts.join(' · ') : null;
 };
 
-const StatusIcon = ({ task }: { task: SubagentTask }) => {
-  if (task.status === 'completed') {
-    return <Check className="h-3.5 w-3.5 flex-none shrink-0 text-status-success" />;
-  }
-  if (task.status === 'failed') {
-    return <X className="h-3.5 w-3.5 flex-none shrink-0 text-status-danger" />;
-  }
-  if (task.status === 'pending') {
-    return <CircleDashed className="h-3.5 w-3.5 flex-none shrink-0 text-muted-foreground" />;
-  }
-  return <Loader2 className="h-3.5 w-3.5 flex-none shrink-0 animate-spin text-muted-foreground" />;
+/**
+ * One state vocabulary for a task and for the agents inside it. Shape carries the meaning
+ * and colour only reinforces it, so the state survives a colour-blind reader and a 12px row.
+ */
+const StatusIcon = ({
+  status,
+  className,
+}: {
+  status: SubagentTask['status'];
+  className: string;
+}) => {
+  const shared = cn('flex-none shrink-0', className);
+  if (status === 'completed') return <Check className={cn(shared, 'text-status-success')} />;
+  if (status === 'failed') return <X className={cn(shared, 'text-status-danger')} />;
+  if (status === 'pending') return <CircleDashed className={cn(shared, 'text-muted-foreground')} />;
+  return <Loader2 className={cn(shared, 'animate-spin text-muted-foreground')} />;
 };
 
 const SubagentTaskRow = ({ task }: { task: SubagentTask }) => {
@@ -93,12 +117,13 @@ const SubagentTaskRow = ({ task }: { task: SubagentTask }) => {
     action = meaningfulSummary || t('sessions.subagentTasks.working', 'Working…');
   }
 
-  const usageLabel = task.status === 'completed' ? formatUsage(task.usage) : null;
+  const { locale } = useNumberFormatting();
+  const usageLabel = task.status === 'completed' ? formatUsage(task.usage, locale) : null;
 
   return (
     <div className="flex flex-col gap-0.5 py-1">
       <div className="flex min-w-0 items-center gap-1.5 text-[13px] leading-tight">
-        <StatusIcon task={task} />
+        <StatusIcon status={task.status} className="h-3.5 w-3.5" />
         <span className="shrink-0 font-medium text-foreground">{actor}</span>
         {task.description ? (
           <>
@@ -135,6 +160,110 @@ const SubagentTaskRow = ({ task }: { task: SubagentTask }) => {
           {usageLabel}
         </span>
       ) : null}
+    </div>
+  );
+};
+
+type GroupAgent = NonNullable<NonNullable<SubagentTask['groupProgress']>['agents']>[number];
+
+const agentMeta = (
+  agent: GroupAgent,
+  locale: string,
+  durationUnits: DurationUnitLabels
+): string | null => {
+  const parts: string[] = [];
+  if (typeof agent.tokens === 'number') parts.push(formatTokens(agent.tokens, locale));
+  if (typeof agent.durationMs === 'number') {
+    const duration = formatDurationCompact(agent.durationMs, durationUnits);
+    if (duration) parts.push(duration);
+  }
+  return parts.length ? parts.join(' · ') : null;
+};
+
+/**
+ * The identity column is the one that truncates, so a long agent label degrades to an
+ * ellipsis instead of pushing the row past its container — the panel body's `overflow-y`
+ * would otherwise turn the overflow into a second horizontal scroller.
+ *
+ * `settled` is the parent task's: the terminal lifecycle event carries no group progress,
+ * so the last tick before it can leave an agent reading as in flight forever. On a settled
+ * task that reads as unknown rather than running — never as success the run never reported.
+ */
+const AgentRow = ({ agent, settled }: { agent: GroupAgent; settled: boolean }) => {
+  const { locale, durationUnits } = useNumberFormatting();
+  const meta = agentMeta(agent, locale, durationUnits);
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 py-0.5 text-[12px] leading-tight">
+      <StatusIcon
+        status={settled && agent.state === 'in_progress' ? 'pending' : agent.state}
+        className="size-3"
+      />
+      <span className="min-w-0 flex-1 truncate font-mono leading-5">
+        <span className="font-medium text-foreground">{agent.label}</span>
+        {agent.promptPreview ? (
+          <span className="ml-1.5 text-[11px] text-muted-foreground/70">{agent.promptPreview}</span>
+        ) : null}
+      </span>
+      {meta ? (
+        <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+          {meta}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
+/**
+ * A task that orchestrates other agents publishes their structure in `groupProgress`.
+ * Render it under the task's own row so the children read as part of it, rather than as
+ * sibling tasks the session never registered.
+ */
+const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
+  const { t } = useTranslation();
+  const agents = task.groupProgress?.agents ?? [];
+  const phases = task.groupProgress?.phases ?? [];
+  if (agents.length === 0) return null;
+
+  const settled = task.status === 'completed' || task.status === 'failed';
+  const buckets = phases.length
+    ? phases.map((phase) => ({
+        key: `phase-${phase.index}`,
+        title: phase.title,
+        agents: agents.filter((agent) => agent.phaseIndex === phase.index),
+      }))
+    : [{ key: 'all', title: null, agents }];
+  const orphans = phases.length
+    ? agents.filter((agent) => !phases.some((phase) => phase.index === agent.phaseIndex))
+    : [];
+
+  return (
+    <div className="mt-0.5 flex flex-col gap-0.5 pb-1 pl-5">
+      {buckets.map((bucket) => (
+        <div key={bucket.key} className="flex flex-col">
+          {bucket.title ? (
+            <div className="flex items-center gap-1.5 pb-0.5 pt-1 text-[10px] font-mono uppercase tracking-wide text-muted-foreground/70">
+              <span className="truncate">{bucket.title}</span>
+              <span className="h-px flex-1 bg-border/50" />
+              <span className="flex-none tabular-nums">
+                {bucket.agents.filter((agent) => agent.state === 'completed').length}/
+                {bucket.agents.length}
+              </span>
+            </div>
+          ) : null}
+          {bucket.agents.length === 0 ? (
+            <span className="py-0.5 text-[11px] text-muted-foreground/60">
+              {t('sessions.subagentTasks.phasePending', 'Not started')}
+            </span>
+          ) : (
+            bucket.agents.map((agent) => (
+              <AgentRow key={`${bucket.key}-${agent.index}`} agent={agent} settled={settled} />
+            ))
+          )}
+        </div>
+      ))}
+      {orphans.map((agent) => (
+        <AgentRow key={`orphan-${agent.index}`} agent={agent} settled={settled} />
+      ))}
     </div>
   );
 };
@@ -182,7 +311,10 @@ export const SubagentTaskPanel = ({ tasks }: { tasks: readonly SubagentTask[] })
       {expanded ? (
         <div className="scrollbar-pro mt-0.5 max-h-[22rem] divide-y divide-border/40 overflow-y-auto pl-1 pr-1">
           {tasks.map((task) => (
-            <SubagentTaskRow key={task.taskId} task={task} />
+            <div key={task.taskId}>
+              <SubagentTaskRow task={task} />
+              <SubagentTaskGroup task={task} />
+            </div>
           ))}
         </div>
       ) : null}

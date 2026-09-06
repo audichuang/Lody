@@ -1746,9 +1746,19 @@ class NotificationOnHistoryApplier {
       // has already pruned, so a tick landing after the terminal event would restart a
       // finished spinner and badge it Background. Non-terminal snapshots only began
       // reaching this merge when the history filter started keeping them.
+      //
+      // `groupProgress` is the exception: it rides only progress ticks, so the terminal
+      // event carries none and dropping a trailing tick whole would freeze the group on
+      // whatever it looked like mid-run. Take that one field and nothing else — routing it
+      // through the merge would bring back the status and kind this guard exists to reject.
       const settled = prev.status === 'completed' || prev.status === 'failed';
       const nonTerminal = incoming.status !== 'completed' && incoming.status !== 'failed';
-      if (settled && nonTerminal) return;
+      if (settled && nonTerminal) {
+        if (incoming.groupProgress === undefined) return;
+        items[idx] = { ...prev, groupProgress: incoming.groupProgress, type: 'subagent_task' };
+        this.changed = true;
+        return;
+      }
 
       // `actor` is the task's identity, derived from `subagent_type` / `workflow_name` /
       // `task_type`. `workflow_name` and `task_type` ride only `task_started`, and

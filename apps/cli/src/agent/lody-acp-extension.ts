@@ -107,12 +107,25 @@ const LEGACY_METHODS = {
   kimiTaskLifecycle: '_kimi/taskLifecycle',
 } as const;
 
+/**
+ * Adapter-owned methods that are current, not compatibility shims. `_claude/sdkMessage`
+ * carries a raw Claude Code SDK message and is emitted only for the message types a
+ * session asks for through `_meta.claudeCode.emitRawSDKMessages`.
+ */
+const CLAUDE_METHODS = {
+  sdkMessage: '_claude/sdkMessage',
+} as const;
+
 export type LodyExtensionEvent =
   | { readonly type: 'usage'; readonly update: SessionUsageUpdate }
   | { readonly type: 'rateLimits'; readonly snapshot: RateLimitsSnapshot }
   | {
       readonly type: 'legacyProposedPlan';
       readonly plan: z.infer<typeof LegacyProposedPlanSchema>;
+    }
+  | {
+      readonly type: 'claudeWorkflowProgress';
+      readonly params: Record<string, unknown>;
     }
   | {
       readonly type: 'legacyTaskLifecycle';
@@ -176,6 +189,10 @@ export function parseLodyExtensionMessage(args: {
   }
   if (method === LODY_EXTENSION_METHODS.rateLimitsUpdate) {
     return { type: 'rateLimits', snapshot: parseRateLimitsSnapshot(args.params) };
+  }
+
+  if (method === CLAUDE_METHODS.sdkMessage) {
+    return { type: 'claudeWorkflowProgress', params: args.params };
   }
 
   // One-release compatibility for pre-Core-v0.1 managed runtimes.

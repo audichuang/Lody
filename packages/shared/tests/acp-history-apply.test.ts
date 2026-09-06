@@ -157,6 +157,62 @@ describe('acp history apply', () => {
     expect((task as { lastToolName?: string } | undefined)?.lastToolName).toBeUndefined();
   });
 
+  it('takes group progress from a tick that lands after the task settled', () => {
+    // Only progress ticks carry `groupProgress`, so the terminal event cannot report how
+    // the group ended. A trailing tick must update the group without reopening the task.
+    const progress = (
+      agents: { index: number; label: string; state: string }[],
+      extra: Record<string, unknown> = {}
+    ) => ({
+      kind: 'background',
+      actor: 'Claude task',
+      groupProgress: { phases: [{ index: 1, title: 'Scan' }], agents },
+      ...extra,
+    });
+    const history = applyNotificationOnHistory(
+      [],
+      [
+        taskUpdate('tool_call', 'in_progress', { kind: 'background', actor: 'my-workflow' }),
+        taskUpdate(
+          'tool_call_update',
+          'in_progress',
+          progress([
+            { index: 1, label: 'one', state: 'completed' },
+            { index: 2, label: 'two', state: 'in_progress' },
+          ])
+        ),
+        taskUpdate('tool_call_update', 'completed', { kind: 'background', summary: 'done' }),
+        taskUpdate(
+          'tool_call_update',
+          'in_progress',
+          progress(
+            [
+              { index: 1, label: 'one', state: 'completed' },
+              { index: 2, label: 'two', state: 'completed' },
+            ],
+            // rides the same tick, and must not survive the guard
+            { lastToolName: 'Grep' }
+          )
+        ),
+      ]
+    );
+    const task = history[0]?.items?.find((i) => i.type === 'subagent_task');
+    expect(task).toMatchObject({
+      taskId: 't1',
+      status: 'completed',
+      actor: 'my-workflow',
+      summary: 'done',
+      groupProgress: {
+        agents: [
+          { label: 'one', state: 'completed' },
+          { label: 'two', state: 'completed' },
+        ],
+      },
+    });
+    // The trailing tick must not re-open the row or re-derive what the guard rejects.
+    expect((task as { lastToolName?: string } | undefined)?.lastToolName).toBeUndefined();
+  });
+
   it('persists the provider turn id on the assistant entry', () => {
     const history = applyNotificationOnHistory(
       [],

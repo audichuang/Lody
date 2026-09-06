@@ -5,6 +5,7 @@ import { performance } from 'perf_hooks';
 import { Logger } from '@/utils/logger';
 import * as acp from '@agentclientprotocol/sdk';
 import { z } from 'zod';
+import { convertClaudeWorkflowProgress } from './claude-workflow-progress';
 import {
   LODY_EXTENSION_METHODS,
   LODY_TOOL_NAMES,
@@ -1443,6 +1444,9 @@ export class AgentClient implements acp.Client {
           })
         );
         return;
+      case 'claudeWorkflowProgress':
+        this.tryHandleClaudeWorkflowProgress(logicalMethod, event.params);
+        return;
       case 'legacyTaskLifecycle':
         if (event.provider === 'claude') {
           this.tryHandleClaudeTaskLifecycleExtension(logicalMethod, event.params);
@@ -1487,6 +1491,24 @@ export class AgentClient implements acp.Client {
     if (this.steerApplicationWaiters.get(parsed.steerId) === waiter) {
       this.steerApplicationWaiters.delete(parsed.steerId);
     }
+  }
+
+  private tryHandleClaudeWorkflowProgress(method: string, params: Record<string, unknown>): void {
+    const result = convertClaudeWorkflowProgress(params);
+    if (!result.ok) {
+      this.logger.debug(
+        `[${this.options.sessionId}] Dropping raw SDK message from ${method}: ${result.reason}`
+      );
+      return;
+    }
+    const acpSessionId = result.notification.sessionId;
+    if (!this.isCurrentAcpSession(acpSessionId as ACPSessionId)) {
+      this.logger.debug(
+        `[${this.options.sessionId}] Dropping workflow progress for mismatched ACP session: ${acpSessionId}`
+      );
+      return;
+    }
+    this.options.onUpdateMessage(result.notification);
   }
 
   private tryHandleClaudeTaskLifecycleExtension(
@@ -1577,6 +1599,13 @@ export class AgentClient implements acp.Client {
 
   private getSessionStartMeta(forkSessionTurnId?: string) {
     const clientIdentifier = this.getGrokClientIdentifier();
+    // The typed task lifecycle message drops `workflow_progress`, the only place a running
+    // workflow reports its phases and per-agent state. Ask the Claude adapter to also send
+    // the raw SDK message for that one subtype; anything else would flood the session.
+    const claudeCode =
+      this.options.agentConfig?.agentType === 'claude'
+        ? { emitRawSDKMessages: [{ type: 'system', subtype: 'task_progress' }] }
+        : undefined;
     const lody = {
       ...(forkSessionTurnId !== undefined
         ? { forkAtTurn: { version: 1 as const, turnId: forkSessionTurnId } }
@@ -1590,10 +1619,13 @@ export class AgentClient implements acp.Client {
           }
         : {}),
     };
-    if (clientIdentifier === undefined && Object.keys(lody).length === 0) return {};
+    if (clientIdentifier === undefined && claudeCode === undefined && Object.keys(lody).length === 0) {
+      return {};
+    }
     return {
       _meta: {
         ...(clientIdentifier !== undefined ? { clientIdentifier } : {}),
+        ...(claudeCode !== undefined ? { claudeCode } : {}),
         ...(Object.keys(lody).length > 0 ? { lody } : {}),
       },
     };

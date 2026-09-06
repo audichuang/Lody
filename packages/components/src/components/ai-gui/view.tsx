@@ -3799,6 +3799,10 @@ const areAssistantVirtualContentsEqual = (
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
     case 'plan':
+    // Safe only because the enclosing row comparator checks `a.item === b.item` first:
+    // these rows carry no data of their own, and a new item wrapper is minted whenever the
+    // turn's items change. Relax that identity check and the task panel stops updating
+    // live, silently and with no failing test.
     case 'subagent_tasks':
       return true;
     case 'worked_group_header':

@@ -1409,6 +1409,23 @@ export type SubagentTaskPayload = {
   /** Ambient/housekeeping task — hidden from the inline task panel. */
   skipTranscript?: boolean;
   hasOutputFile?: boolean;
+  /**
+   * Structure published by a task that orchestrates other agents, so the panel can group
+   * them. Provider-neutral: whoever runs the orchestration fills what it tracks, and
+   * normalizes its own state words into `SubagentTaskStatus` before publishing.
+   */
+  groupProgress?: {
+    phases?: { index: number; title: string }[];
+    agents?: {
+      index: number;
+      label: string;
+      phaseIndex?: number;
+      state: SubagentTaskStatus;
+      tokens?: number;
+      durationMs?: number;
+      promptPreview?: string;
+    }[];
+  };
 };
 
 export type MessageContent =
