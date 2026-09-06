@@ -103,6 +103,33 @@ describe('acp history apply', () => {
       _meta: { lody: { task: { version: 1, taskId: 't1', status, ...task } } },
     });
 
+  it('persists the first running observation across snapshots and history reloads', () => {
+    const snapshot = (state: string, durationMs = 0) =>
+      taskUpdate('tool_call_update', 'in_progress', {
+        kind: 'background',
+        groupProgress: { agents: [{ index: 0, label: 'reader', state, durationMs }] },
+      });
+    const start = '2026-09-07T00:00:00.000Z';
+    const first = applyNotificationOnHistory([], [snapshot('pending')], undefined, {
+      now: () => start,
+    });
+    const running = applyNotificationOnHistory(first, [snapshot('in_progress')], undefined, {
+      now: () => start,
+    });
+    const reloaded = JSON.parse(JSON.stringify(running));
+    const later = applyNotificationOnHistory(reloaded, [snapshot('in_progress')], undefined, {
+      now: () => '2026-09-07T00:00:30.000Z',
+    });
+    const task = later[0]?.items?.find((item) => item.type === 'subagent_task');
+    expect(task).toMatchObject({
+      groupProgress: { agents: [{ startedAtEpochSeconds: Date.parse(start) / 1000 }] },
+    });
+    const completed = applyNotificationOnHistory(later, [snapshot('completed', 31000)]);
+    expect(completed[0]?.items?.find((item) => item.type === 'subagent_task')).toMatchObject({
+      groupProgress: { agents: [{ state: 'completed', durationMs: 31000 }] },
+    });
+  });
+
   it('keeps the task identity a later event cannot re-derive', () => {
     // Only the first event carries an identity source; every later one falls through to
     // the producer's placeholder, so later-wins would rename the task.
@@ -137,7 +164,11 @@ describe('acp history apply', () => {
       [],
       [
         taskUpdate('tool_call', 'in_progress', { kind: 'subagent', actor: 'Explore' }),
-        taskUpdate('tool_call_update', 'completed', { kind: 'subagent', actor: 'Explore', summary: 'done' }),
+        taskUpdate('tool_call_update', 'completed', {
+          kind: 'subagent',
+          actor: 'Explore',
+          summary: 'done',
+        }),
         // a late tick reports in_progress and re-derives kind from a pruned registry
         taskUpdate('tool_call_update', 'in_progress', {
           kind: 'background',

@@ -24,6 +24,7 @@ export const SUBAGENT_TASK_EVENTS = [
   'task_started',
   'task_progress',
   'task_updated',
+  'task_resumed',
   'task_notification',
 ] as const;
 
@@ -56,6 +57,7 @@ const SubagentTaskGroupProgressSchema = z.object({
         state: z.enum(SUBAGENT_TASK_STATUSES),
         tokens: z.number().optional(),
         durationMs: z.number().optional(),
+        startedAtEpochSeconds: z.number().nonnegative().optional(),
         promptPreview: z.string().optional(),
       })
     )
@@ -67,6 +69,7 @@ export type SubagentTaskGroupProgress = z.infer<typeof SubagentTaskGroupProgress
 /** Runtime validator for a persisted `subagent_task` payload (foreign data). */
 export const SubagentTaskPayloadSchema = z.object({
   taskId: z.string().min(1),
+  snapshotRevision: z.number().int().nonnegative().optional(),
   status: z.enum(SUBAGENT_TASK_STATUSES),
   taskKind: z.enum(['subagent', 'background', 'scheduled']).optional(),
   actor: z.string().optional(),
@@ -94,6 +97,7 @@ export const SubagentTaskPayloadSchema = z.object({
 const LodyTaskMetaSchema = z.object({
   version: z.literal(1),
   taskId: z.string().min(1),
+  snapshotRevision: z.number().int().nonnegative().optional(),
   kind: z.enum(['subagent', 'background', 'scheduled']),
   status: z.enum(SUBAGENT_TASK_STATUSES),
   description: z.string().optional(),
@@ -119,6 +123,7 @@ export const parseLodyTaskMeta = (meta: unknown): SubagentTaskPayload | null => 
   const task = parsed.data;
   return {
     taskId: task.taskId,
+    ...(task.snapshotRevision !== undefined ? { snapshotRevision: task.snapshotRevision } : {}),
     status: task.status,
     taskKind: task.kind,
     ...(task.actor !== undefined ? { actor: task.actor } : {}),

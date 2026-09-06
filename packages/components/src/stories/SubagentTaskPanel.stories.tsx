@@ -98,96 +98,67 @@ const many: SubagentTask[] = Array.from({ length: 16 }, (_, index) => ({
   usage: { totalTokens: 4200 + index * 350, toolUses: 2 + (index % 5) },
 }));
 
-
-/**
- * A real workflow run, captured from the bundled Claude adapter driven over ACP
- * (Claude Code 2.1.258) and pushed through the CLI's real history pipeline. The two
- * stories below are the SAME run, differing only in whether the history filter keeps
- * non-terminal task lifecycle snapshots.
- */
-const realWorkflowBeforeFix: SubagentTask[] = [
+/** Independently authored synthetic examples of missing and retained progress. */
+const workflowBeforeProgress: SubagentTask[] = [
   {
-    'taskId': 'w5ftatomx',
-    'status': 'completed',
-    'taskKind': 'background',
-    'actor': 'Claude task',
-    'toolUseId': 'toolu_01VGYjhBXHoAAc9a8dBx3Upu',
-    'description': 'verify task lifecycle reaches history',
-    'isBackgrounded': true,
-    'summary': 'Dynamic workflow \'verify task lifecycle reaches history\' completed',
-    'usage': {
-        'totalTokens': 26781,
-        'toolUses': 0,
-        'durationMs': 1738
-    }
-} as SubagentTask,
+    type: 'subagent_task',
+    taskId: 'synthetic-workflow',
+    status: 'completed',
+    taskKind: 'background',
+    actor: 'Task',
+    description: 'Review sample modules',
+    summary: 'Sample review complete.',
+    usage: { totalTokens: 12000, toolUses: 3, durationMs: 24000 },
+  },
+];
+const workflowAfterProgress: SubagentTask[] = [
+  {
+    ...workflowBeforeProgress[0]!,
+    actor: 'module-review',
+    lastToolName: 'module-reader',
+  },
 ];
 
-const realWorkflowAfterFix: SubagentTask[] = [
-  {
-    'taskId': 'w5ftatomx',
-    'status': 'completed',
-    'taskKind': 'background',
-    'actor': 'e2e-probe',
-    'toolUseId': 'toolu_01VGYjhBXHoAAc9a8dBx3Upu',
-    'description': 'Check: checker',
-    'isBackgrounded': true,
-    'summary': 'Dynamic workflow \'verify task lifecycle reaches history\' completed',
-    'lastToolName': 'checker',
-    'usage': {
-        'totalTokens': 26781,
-        'toolUses': 0,
-        'durationMs': 1738
-    }
-} as SubagentTask,
-];
-
-
-/**
- * A workflow run with its own structure. `groupProgress` here is the verbatim result of
- * pushing one captured `_claude/sdkMessage` through the CLI converter and the history
- * applier — the phases, labels and token counts are the run's own; the states are the
- * converter's normalization of the provider's own `done`/`start` words.
- */
+/** Synthetic live agents, including one queued agent and one completed agent. */
 const workflowWithAgents: SubagentTask[] = [
   {
     type: 'subagent_task',
-    taskId: 'w8sgyv66b',
+    taskId: 'synthetic-group',
     status: 'in_progress',
     taskKind: 'background',
-    actor: 'raw-probe',
-    description: 'Scan: one',
-    lastToolName: 'one',
+    actor: 'module-review',
+    description: 'Inspect sample modules',
     isBackgrounded: true,
     groupProgress: {
       phases: [
-        { index: 1, title: 'Scan' },
-        { index: 2, title: 'Sum' },
+        { index: 0, title: 'Inspect' },
+        { index: 1, title: 'Summarize' },
       ],
       agents: [
         {
-          index: 1,
-          label: 'one',
-          phaseIndex: 1,
+          index: 0,
+          label: 'api-reader',
+          phaseIndex: 0,
           state: 'completed',
-          tokens: 26807,
-          durationMs: 1771,
-          promptPreview: 'Reply with exactly: one',
+          tokens: 4200,
+          durationMs: 12000,
         },
         {
-          index: 2,
-          label: 'two',
-          phaseIndex: 1,
+          index: 1,
+          label: 'ui-reader',
+          phaseIndex: 0,
           state: 'in_progress',
-          promptPreview: 'Reply with exactly: two',
+          durationMs: 0,
+          startedAtEpochSeconds: Date.now() / 1000 - 10,
         },
+        { index: 2, label: 'report-writer', phaseIndex: 1, state: 'pending' },
       ],
     },
-  } as SubagentTask,
+  },
 ];
 
 /**
- * The narrow case the captured run cannot show: labels long enough to compete with the
+ * A synthetic narrow case: labels long enough to compete with the
  * preview and the meta column, on a task that has already settled. The agent left in
  * `in_progress` renders as unknown rather than as a spinner, because no trailing tick ever
  * reported how it ended.
@@ -262,11 +233,11 @@ export const Mixed: Story = { args: { tasks: mixed } };
 export const SingleRunning: Story = { args: { tasks: [running[0] as SubagentTask] } };
 export const ManyCompleted: Story = { args: { tasks: many } };
 
-/** The run as it persists today: no running tool, and the placeholder name. */
-export const RealWorkflowBeforeFix: Story = { args: { tasks: realWorkflowBeforeFix } };
+/** Progress missing: only the final notification is available. */
+export const WorkflowBeforeProgress: Story = { args: { tasks: workflowBeforeProgress } };
 
-/** The same run with the fix: the workflow's own name, and its last running agent. */
-export const RealWorkflowAfterFix: Story = { args: { tasks: realWorkflowAfterFix } };
+/** Progress retained: identity and last tool survive completion. */
+export const WorkflowAfterProgress: Story = { args: { tasks: workflowAfterProgress } };
 
 /** The workflow's own agents, grouped by the phase that declared them. */
 export const WorkflowWithAgents: Story = { args: { tasks: workflowWithAgents } };

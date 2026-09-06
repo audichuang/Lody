@@ -92,7 +92,11 @@ export const parseCodexCollabAgentTasks = (
     return {
       taskId,
       status,
-      event: CODEX_COLLAB_TOOL_TO_TASK_EVENT[tool.data],
+      event:
+        (tool.data === 'resumeAgent' || tool.data === 'sendInput') &&
+        (state?.status === 'running' || state?.status === 'pendingInit')
+          ? 'task_resumed'
+          : CODEX_COLLAB_TOOL_TO_TASK_EVENT[tool.data],
       subagentType: 'Codex agent',
       taskType: tool.data,
       description: input.data.prompt?.trim() || undefined,

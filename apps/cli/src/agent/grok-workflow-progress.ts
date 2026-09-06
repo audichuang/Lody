@@ -23,6 +23,7 @@ const WorkflowUpdatedSchema = z
       .object({
         sessionUpdate: z.literal('workflow_updated'),
         run_id: z.string().min(1),
+        revision: z.number().int().nonnegative(),
         name: z.string().optional(),
         objective: z.string().optional(),
         status: z.string(),
@@ -149,6 +150,7 @@ export const convertGrokWorkflowProgress = (params: unknown): WorkflowProgressCo
               task: {
                 version: 1,
                 taskId: update.run_id,
+                snapshotRevision: update.revision,
                 status,
                 // `kind` is required by the shared schema; Grok's `foreground` flag is the
                 // same fact. Grok serializes it on every snapshot (serde default false), so

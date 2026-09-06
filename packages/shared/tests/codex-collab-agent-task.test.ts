@@ -61,6 +61,56 @@ describe('parseCodexCollabAgentTasks', () => {
 });
 
 describe('Codex collab-agent history normalization', () => {
+  it.each(['resumeAgent', 'sendInput'])(
+    'reopens the receiver for %s, with and without a prompt',
+    (title) => {
+      for (const prompt of [null, 'Continue reading']) {
+        const update = (tool: string, state: string) =>
+          parseSessionNotification({
+            sessionId: 'session-1',
+            update: {
+              sessionUpdate: 'tool_call_update',
+              toolCallId: `call-${tool}`,
+              title: tool,
+              status: 'completed',
+              rawInput: rawInput({
+                prompt,
+                status: 'completed',
+                agentsStates: { 'thread-worker': { status: state, message: null } },
+              }),
+              _meta: {
+                lody: {
+                  task: {
+                    version: 1,
+                    taskId: `call-${tool}`,
+                    kind: 'subagent',
+                    status: 'completed',
+                    description: prompt,
+                  },
+                },
+              },
+            },
+          });
+        let history = applyNotificationOnHistory([], [update('wait', 'completed')]);
+        history = applyNotificationOnHistory(history, [update(title, 'running')]);
+        expect(history.flatMap((entry) => entry.items ?? [])).toEqual([
+          expect.objectContaining({
+            type: 'subagent_task',
+            taskId: 'thread-worker',
+            status: 'in_progress',
+          }),
+        ]);
+      }
+    }
+  );
+
+  it('does not reopen a settled child from an ordinary wait or a resume without receiver state', () => {
+    expect(
+      parseCodexCollabAgentTasks('resumeAgent', rawInput({ agentsStates: {} }))[0]?.event
+    ).not.toBe('task_resumed');
+    expect(parseCodexCollabAgentTasks('wait', rawInput())[0]?.event).not.toBe('task_resumed');
+    expect(parseCodexCollabAgentTasks('closeAgent', rawInput())[0]?.event).not.toBe('task_resumed');
+  });
   it('merges start and completion by receiver thread id without persisting a tool call', () => {
     const started = parseSessionNotification({
       sessionId: 'session-1',

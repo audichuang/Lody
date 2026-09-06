@@ -1099,6 +1099,12 @@ export const buildMessageContentFromNotification = (
       return [];
     case 'tool_call':
     case 'tool_call_update': {
+      // Codex metadata describes the operation, while its receiver states identify
+      // the children. Normalize those first, regardless of nullable prompt fields.
+      const codexCollabTasks = parseCodexCollabAgentTasks(update.title, update.rawInput);
+      if (codexCollabTasks.length > 0) {
+        return codexCollabTasks.map((task) => ({ type: 'subagent_task', ...task }));
+      }
       // Subagent/background task lifecycle rides the tool_call transport (see
       // claude-subagent-task.ts). Materialize it as a first-class `subagent_task`
       // item instead of persisting a tool_call; the applier merges by taskId.
@@ -1107,11 +1113,6 @@ export const buildMessageContentFromNotification = (
         parseSubagentTaskWire(update.rawInput);
       if (subagentTask) {
         return [{ type: 'subagent_task', ...subagentTask }];
-      }
-
-      const codexCollabTasks = parseCodexCollabAgentTasks(update.title, update.rawInput);
-      if (codexCollabTasks.length > 0) {
-        return codexCollabTasks.map((task) => ({ type: 'subagent_task', ...task }));
       }
 
       const kind = (update.kind ?? undefined) as ToolKind | null | undefined;
@@ -1737,11 +1738,47 @@ class NotificationOnHistoryApplier {
 
     const items = this.ensureEntryItems(entryIndex);
     const idx = items.findIndex((m) => m.type === 'subagent_task' && m.taskId === incoming.taskId);
+    const previousTask =
+      idx >= 0 ? (items[idx] as Extract<MessageContent, { type: 'subagent_task' }>) : undefined;
+    const freshSnapshot = incoming.snapshotRevision !== undefined;
+    if (
+      incoming.snapshotRevision !== undefined &&
+      previousTask?.snapshotRevision !== undefined &&
+      incoming.snapshotRevision <= previousTask.snapshotRevision
+    )
+      return;
+    if (incoming.groupProgress?.agents) {
+      const previous = idx >= 0 ? items[idx] : undefined;
+      const previousAgents = new Map(
+        (previous?.type === 'subagent_task' ? (previous.groupProgress?.agents ?? []) : []).map(
+          (agent) => [agent.index, agent]
+        )
+      );
+      incoming = {
+        ...incoming,
+        groupProgress: {
+          ...incoming.groupProgress,
+          agents: incoming.groupProgress.agents.map((agent) => {
+            if (agent.state !== 'in_progress' || agent.startedAtEpochSeconds !== undefined)
+              return agent;
+            const prev = previousAgents.get(agent.index);
+            // Persist once, not on each renderer mount or progress tick. Provider-final
+            // duration remains authoritative when the agent settles.
+            const startedAtEpochSeconds =
+              prev?.state === 'in_progress' ? prev.startedAtEpochSeconds : undefined;
+            return {
+              ...agent,
+              startedAtEpochSeconds: startedAtEpochSeconds ?? Date.parse(this.now()) / 1000,
+            };
+          }),
+        },
+      };
+    }
     if (idx >= 0) {
       const prev = items[idx] as Extract<MessageContent, { type: 'subagent_task' }>;
       // Later events win per field, earlier-only fields (subagentType/description) survive.
       //
-      // A settled row ignores non-terminal snapshots entirely. `task_progress` reports
+      // A settled row ignores unversioned progress unless an explicit resume arrives. `task_progress` reports
       // `in_progress` and re-derives `taskKind`/`isBackgrounded` from state the producer
       // has already pruned, so a tick landing after the terminal event would restart a
       // finished spinner and badge it Background. Non-terminal snapshots only began
@@ -1753,7 +1790,8 @@ class NotificationOnHistoryApplier {
       // through the merge would bring back the status and kind this guard exists to reject.
       const settled = prev.status === 'completed' || prev.status === 'failed';
       const nonTerminal = incoming.status !== 'completed' && incoming.status !== 'failed';
-      if (settled && nonTerminal) {
+      const resumed = incoming.event === 'task_resumed' || freshSnapshot;
+      if (settled && nonTerminal && !resumed) {
         if (incoming.groupProgress === undefined) return;
         items[idx] = { ...prev, groupProgress: incoming.groupProgress, type: 'subagent_task' };
         this.changed = true;
@@ -1770,6 +1808,13 @@ class NotificationOnHistoryApplier {
       // carries none of the three either, so it already clobbered a settled row.
       items[idx] = {
         ...mergeSubagentTaskPayload(prev, incoming),
+        ...(settled && nonTerminal && resumed
+          ? {
+              summary: incoming.summary,
+              error: incoming.error,
+              endedAtEpochSeconds: incoming.endedAtEpochSeconds,
+            }
+          : {}),
         ...(prev.actor !== undefined ? { actor: prev.actor } : {}),
         type: 'subagent_task',
       };

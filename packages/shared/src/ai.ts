@@ -1366,6 +1366,7 @@ export type SubagentTaskEvent =
   | 'task_started'
   | 'task_progress'
   | 'task_updated'
+  | 'task_resumed'
   | 'task_notification';
 export type SubagentTaskUsage = {
   totalTokens?: number;
@@ -1383,6 +1384,8 @@ export type SubagentTaskUsage = {
 export type SubagentTaskPayload = {
   taskId: string;
   status: SubagentTaskStatus;
+  /** Monotonically increasing revision for authoritative full snapshots. */
+  snapshotRevision?: number;
   /** Provider-neutral task category published through `_meta.lody.task`. */
   taskKind?: 'subagent' | 'background' | 'scheduled';
   /** Human-readable worker or workflow identity. */
@@ -1423,6 +1426,8 @@ export type SubagentTaskPayload = {
       state: SubagentTaskStatus;
       tokens?: number;
       durationMs?: number;
+      /** Provider start time, or the first running snapshot observed by history. */
+      startedAtEpochSeconds?: number;
       promptPreview?: string;
     }[];
   };

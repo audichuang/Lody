@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronRight, CircleDashed, Loader2, X } from 'lucide-react';
 import type { MessageContent } from '@lody/shared';
@@ -169,12 +169,20 @@ type GroupAgent = NonNullable<NonNullable<SubagentTask['groupProgress']>['agents
 const agentMeta = (
   agent: GroupAgent,
   locale: string,
-  durationUnits: DurationUnitLabels
+  durationUnits: DurationUnitLabels,
+  now: number,
+  settled: boolean
 ): string | null => {
   const parts: string[] = [];
-  if (typeof agent.tokens === 'number') parts.push(formatTokens(agent.tokens, locale));
-  if (typeof agent.durationMs === 'number') {
-    const duration = formatDurationCompact(agent.durationMs, durationUnits);
+  const running = agent.state === 'in_progress';
+  if (typeof agent.tokens === 'number' && (!running || agent.tokens > 0))
+    parts.push(formatTokens(agent.tokens, locale));
+  const durationMs =
+    running && !settled && agent.startedAtEpochSeconds !== undefined
+      ? Math.max(agent.durationMs ?? 0, now - agent.startedAtEpochSeconds * 1000)
+      : agent.durationMs;
+  if (typeof durationMs === 'number' && (!running || durationMs > 0)) {
+    const duration = formatDurationCompact(durationMs, durationUnits);
     if (duration) parts.push(duration);
   }
   return parts.length ? parts.join(' · ') : null;
@@ -189,9 +197,17 @@ const agentMeta = (
  * so the last tick before it can leave an agent reading as in flight forever. On a settled
  * task that reads as unknown rather than running — never as success the run never reported.
  */
-const AgentRow = ({ agent, settled }: { agent: GroupAgent; settled: boolean }) => {
+const AgentRow = ({
+  agent,
+  settled,
+  now,
+}: {
+  agent: GroupAgent;
+  settled: boolean;
+  now: number;
+}) => {
   const { locale, durationUnits } = useNumberFormatting();
-  const meta = agentMeta(agent, locale, durationUnits);
+  const meta = agentMeta(agent, locale, durationUnits, now, settled);
   return (
     <div className="flex min-w-0 items-center gap-1.5 py-0.5 text-[12px] leading-tight">
       <StatusIcon
@@ -222,9 +238,20 @@ const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
   const { t } = useTranslation();
   const agents = task.groupProgress?.agents ?? [];
   const phases = task.groupProgress?.phases ?? [];
-  if (agents.length === 0) return null;
-
   const settled = task.status === 'completed' || task.status === 'failed';
+  const ticking =
+    !settled &&
+    agents.some(
+      (agent) => agent.state === 'in_progress' && agent.startedAtEpochSeconds !== undefined
+    );
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!ticking) return undefined;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  if (agents.length === 0) return null;
   const buckets = phases.length
     ? phases.map((phase) => ({
         key: `phase-${phase.index}`,
@@ -256,13 +283,18 @@ const SubagentTaskGroup = ({ task }: { task: SubagentTask }) => {
             </span>
           ) : (
             bucket.agents.map((agent) => (
-              <AgentRow key={`${bucket.key}-${agent.index}`} agent={agent} settled={settled} />
+              <AgentRow
+                key={`${bucket.key}-${agent.index}`}
+                agent={agent}
+                settled={settled}
+                now={now}
+              />
             ))
           )}
         </div>
       ))}
       {orphans.map((agent) => (
-        <AgentRow key={`orphan-${agent.index}`} agent={agent} settled={settled} />
+        <AgentRow key={`orphan-${agent.index}`} agent={agent} settled={settled} now={now} />
       ))}
     </div>
   );

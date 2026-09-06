@@ -57,6 +57,20 @@ const taskOf = (params: unknown): Task =>
   (convert(params).update as { _meta?: { lody?: { task?: Task } } })._meta?.lody?.task as Task;
 
 describe('convertGrokWorkflowProgress', () => {
+  it('reopens only on a newer snapshot and ignores stale terminal and progress snapshots', () => {
+    const failed = convert(
+      snapshot({ revision: 7, status: 'failed', result_summary: 'old failure' })
+    );
+    const resumed = convert(snapshot({ revision: 8 }));
+    const done = convert(snapshot({ revision: 9, status: 'complete' }));
+    let history = applyNotificationOnHistory([], [failed, resumed, failed]);
+    const task = () =>
+      history.flatMap((entry) => entry.items ?? []).find((item) => item.type === 'subagent_task');
+    expect(task()).toMatchObject({ status: 'in_progress', snapshotRevision: 8 });
+    expect(task()).not.toHaveProperty('summary', 'old failure');
+    history = applyNotificationOnHistory(history, [done, resumed]);
+    expect(task()).toMatchObject({ status: 'completed', snapshotRevision: 9 });
+  });
   it('maps one snapshot onto the shared task row and the agents under it', () => {
     const notification = convert(snapshot());
 
@@ -69,6 +83,7 @@ describe('convertGrokWorkflowProgress', () => {
     expect(taskOf(snapshot())).toEqual({
       version: 1,
       taskId: 'wf_run-1',
+      snapshotRevision: 7,
       status: 'in_progress',
       kind: 'background',
       actor: 'nightly-audit',
@@ -173,6 +188,7 @@ describe('convertGrokWorkflowProgress', () => {
     const second = convert(snapshot());
     const last = convert(
       snapshot({
+        revision: 8,
         status: 'complete',
         result_summary: 'audit done',
         agents: [
