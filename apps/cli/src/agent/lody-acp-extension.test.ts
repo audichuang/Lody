@@ -29,3 +29,28 @@ describe('rate-limit window labels', () => {
     ).toEqual({ type: 'rateLimits', snapshot });
   });
 });
+
+describe('provider workflow lanes', () => {
+  it("routes Grok's session notifications to the workflow converter and nothing else of Grok's", () => {
+    const params = {
+      sessionId: 'synthetic-session',
+      update: { sessionUpdate: 'workflow_updated' },
+    };
+    expect(
+      parseLodyExtensionMessage({
+        method: '_x.ai/session_notification',
+        params,
+        provider: 'grok',
+        sessionId: 'synthetic-session',
+      })
+    ).toEqual({ type: 'grokWorkflowProgress', params });
+    expect(
+      parseLodyExtensionMessage({
+        method: '_x.ai/queue/changed',
+        params: {},
+        provider: 'grok',
+        sessionId: 'synthetic-session',
+      })
+    ).toBeNull();
+  });
+});

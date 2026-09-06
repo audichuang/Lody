@@ -115,8 +115,11 @@ describe('convertClaudeWorkflowProgress', () => {
 
     const stateOf = (r: typeof queued) =>
       (r.ok &&
-        (r.notification.update as { _meta?: { lody?: { task?: { groupProgress?: { agents?: { state: string }[] } } } } })
-          ._meta?.lody?.task?.groupProgress?.agents?.[0]?.state) ||
+        (
+          r.notification.update as {
+            _meta?: { lody?: { task?: { groupProgress?: { agents?: { state: string }[] } } } };
+          }
+        )._meta?.lody?.task?.groupProgress?.agents?.[0]?.state) ||
       undefined;
 
     expect(stateOf(queued)).toBe('pending');

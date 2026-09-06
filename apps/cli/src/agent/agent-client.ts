@@ -5,7 +5,11 @@ import { performance } from 'perf_hooks';
 import { Logger } from '@/utils/logger';
 import * as acp from '@agentclientprotocol/sdk';
 import { z } from 'zod';
-import { convertClaudeWorkflowProgress } from './claude-workflow-progress';
+import {
+  convertClaudeWorkflowProgress,
+  type WorkflowProgressConversion,
+} from './claude-workflow-progress';
+import { convertGrokWorkflowProgress } from './grok-workflow-progress';
 import {
   LODY_EXTENSION_METHODS,
   LODY_TOOL_NAMES,
@@ -1445,7 +1449,10 @@ export class AgentClient implements acp.Client {
         );
         return;
       case 'claudeWorkflowProgress':
-        this.tryHandleClaudeWorkflowProgress(logicalMethod, event.params);
+        this.forwardWorkflowProgress(logicalMethod, convertClaudeWorkflowProgress(event.params));
+        return;
+      case 'grokWorkflowProgress':
+        this.forwardWorkflowProgress(logicalMethod, convertGrokWorkflowProgress(event.params));
         return;
       case 'legacyTaskLifecycle':
         if (event.provider === 'claude') {
@@ -1493,11 +1500,10 @@ export class AgentClient implements acp.Client {
     }
   }
 
-  private tryHandleClaudeWorkflowProgress(method: string, params: Record<string, unknown>): void {
-    const result = convertClaudeWorkflowProgress(params);
+  private forwardWorkflowProgress(method: string, result: WorkflowProgressConversion): void {
     if (!result.ok) {
       this.logger.debug(
-        `[${this.options.sessionId}] Dropping raw SDK message from ${method}: ${result.reason}`
+        `[${this.options.sessionId}] Dropping workflow progress from ${method}: ${result.reason}`
       );
       return;
     }
@@ -1619,7 +1625,11 @@ export class AgentClient implements acp.Client {
           }
         : {}),
     };
-    if (clientIdentifier === undefined && claudeCode === undefined && Object.keys(lody).length === 0) {
+    if (
+      clientIdentifier === undefined &&
+      claudeCode === undefined &&
+      Object.keys(lody).length === 0
+    ) {
       return {};
     }
     return {

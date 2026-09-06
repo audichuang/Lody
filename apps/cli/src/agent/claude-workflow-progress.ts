@@ -101,7 +101,8 @@ const preview = (value: string | undefined): string | undefined => {
 const nonNegative = (value: number | undefined): number | undefined =>
   value === undefined || !Number.isFinite(value) || value < 0 ? undefined : value;
 
-export type ClaudeWorkflowProgressConversion =
+/** Result of turning one provider workflow snapshot into a task lifecycle notification. */
+export type WorkflowProgressConversion =
   | { ok: true; notification: AcpSessionNotification }
   | { ok: false; reason: string };
 
@@ -113,9 +114,7 @@ export type ClaudeWorkflowProgressConversion =
  * Returns `{ ok: false }` for every message that is not a workflow progress tick — the
  * caller subscribes to a filtered stream, but the filter is the agent's, not ours.
  */
-export const convertClaudeWorkflowProgress = (
-  params: unknown
-): ClaudeWorkflowProgressConversion => {
+export const convertClaudeWorkflowProgress = (params: unknown): WorkflowProgressConversion => {
   const parsed = RawSdkMessageSchema.safeParse(params);
   if (!parsed.success) return { ok: false, reason: parsed.error.message };
 
@@ -139,7 +138,9 @@ export const convertClaudeWorkflowProgress = (
       ...(a.phaseIndex !== undefined ? { phaseIndex: a.phaseIndex } : {}),
       ...(nonNegative(a.tokens) !== undefined ? { tokens: nonNegative(a.tokens) } : {}),
       ...(nonNegative(a.durationMs) !== undefined ? { durationMs: nonNegative(a.durationMs) } : {}),
-      ...(preview(a.promptPreview) !== undefined ? { promptPreview: preview(a.promptPreview) } : {}),
+      ...(preview(a.promptPreview) !== undefined
+        ? { promptPreview: preview(a.promptPreview) }
+        : {}),
     });
   }
 

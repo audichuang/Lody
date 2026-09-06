@@ -108,12 +108,20 @@ const LEGACY_METHODS = {
 } as const;
 
 /**
- * Adapter-owned methods that are current, not compatibility shims. `_claude/sdkMessage`
- * carries a raw Claude Code SDK message and is emitted only for the message types a
- * session asks for through `_meta.claudeCode.emitRawSDKMessages`.
+ * Provider-owned notification methods Lody reads for workflow structure. Both are stopgaps
+ * in this compatibility layer: the durable home for `groupProgress` is the adapter
+ * publishing it on `_meta.lody.task`, which first needs the Core `LodyTaskMeta` contract to
+ * carry the field. `_claude/sdkMessage` carries a raw Claude Code SDK message and is emitted
+ * only for the message types a session asks for through `_meta.claudeCode.emitRawSDKMessages`.
+ * `_x.ai/session_notification` is Grok's own session event stream, forwarded unchanged by
+ * its adapter; `workflow_updated` is the only event Lody reads from it.
  */
 const CLAUDE_METHODS = {
   sdkMessage: '_claude/sdkMessage',
+} as const;
+
+const GROK_METHODS = {
+  sessionNotification: '_x.ai/session_notification',
 } as const;
 
 export type LodyExtensionEvent =
@@ -125,6 +133,10 @@ export type LodyExtensionEvent =
     }
   | {
       readonly type: 'claudeWorkflowProgress';
+      readonly params: Record<string, unknown>;
+    }
+  | {
+      readonly type: 'grokWorkflowProgress';
       readonly params: Record<string, unknown>;
     }
   | {
@@ -193,6 +205,9 @@ export function parseLodyExtensionMessage(args: {
 
   if (method === CLAUDE_METHODS.sdkMessage) {
     return { type: 'claudeWorkflowProgress', params: args.params };
+  }
+  if (method === GROK_METHODS.sessionNotification) {
+    return { type: 'grokWorkflowProgress', params: args.params };
   }
 
   // One-release compatibility for pre-Core-v0.1 managed runtimes.
