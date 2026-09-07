@@ -296,8 +296,9 @@ describe('handleACPUpdateMessage', () => {
             taskId: 'task-1',
             status: 'completed',
             event: 'task_notification',
-            // description survives from the earlier task_started/progress events
-            description: 'Reading files',
+            // The task's purpose survives from `task_started`; the progress tick's own
+            // activity text does not replace it, and the terminal event carries none.
+            description: 'Start',
           },
         ],
       },
@@ -512,9 +513,10 @@ describe('handleACPUpdateMessage', () => {
       taskId: 'task-2',
       status: 'completed',
       summary: 'Audit done',
-      // a progress tick's activity description wins and survives the terminal event,
-      // matching the legacy-carrier expectation pinned above
-      description: 'running Grep',
+      // The purpose stays what `task_started` declared: a tick reuses `description` for
+      // the step it is on, and the terminal event omits it, so later-wins would leave the
+      // finished row describing its last step. The step is still reachable below.
+      description: 'Auditing history',
       // the last progress tick wins, and survives the terminal event that omits it
       lastToolName: 'Grep',
     });

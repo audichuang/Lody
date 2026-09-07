@@ -103,6 +103,55 @@ describe('acp history apply', () => {
       _meta: { lody: { task: { version: 1, taskId: 't1', status, ...task } } },
     });
 
+  it('keeps the task purpose when a progress tick reports the current activity', () => {
+    // `task_started` carries the job; `task_progress` reuses `description` for the step it
+    // is on; the terminal event carries none. Later-wins left a finished row describing its
+    // last step. The step is still reachable as `lastToolName`.
+    const history = applyNotificationOnHistory(
+      [],
+      [
+        taskUpdate('tool_call', 'in_progress', {
+          kind: 'subagent',
+          description: 'Find the CLI startup path',
+        }),
+        taskUpdate('tool_call_update', 'in_progress', {
+          kind: 'subagent',
+          description: 'Check: checker',
+          lastToolName: 'Grep',
+        }),
+        taskUpdate('tool_call_update', 'completed', { kind: 'subagent', summary: 'found it' }),
+      ]
+    );
+    expect(history[0]?.items?.find((item) => item.type === 'subagent_task')).toMatchObject({
+      description: 'Find the CLI startup path',
+      lastToolName: 'Grep',
+      summary: 'found it',
+      status: 'completed',
+    });
+  });
+
+  it('keeps a backgrounded task backgrounded when a progress tick omits the flag', () => {
+    // `is_backgrounded` rides one `task_updated`; every later event re-derives `kind` as
+    // `subagent`, so an admitted tick used to drop the Background badge mid-run.
+    const history = applyNotificationOnHistory(
+      [],
+      [
+        taskUpdate('tool_call', 'in_progress', { kind: 'subagent', actor: 'Bash' }),
+        taskUpdate('tool_call_update', 'in_progress', { kind: 'background', actor: 'Bash' }),
+        taskUpdate('tool_call_update', 'in_progress', {
+          kind: 'subagent',
+          actor: 'Bash',
+          lastToolName: 'Read',
+        }),
+      ]
+    );
+    expect(history[0]?.items?.find((item) => item.type === 'subagent_task')).toMatchObject({
+      taskKind: 'background',
+      isBackgrounded: true,
+      lastToolName: 'Read',
+    });
+  });
+
   it('persists the first running observation across snapshots and history reloads', () => {
     const snapshot = (state: string, durationMs = 0) =>
       taskUpdate('tool_call_update', 'in_progress', {

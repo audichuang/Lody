@@ -1816,6 +1816,18 @@ class NotificationOnHistoryApplier {
             }
           : {}),
         ...(prev.actor !== undefined ? { actor: prev.actor } : {}),
+        // `description` is the task's purpose and rides `task_started`; a progress tick
+        // carries the CURRENT ACTIVITY under the same key, and the terminal event carries
+        // none, so later-wins would leave a finished row describing its last step instead
+        // of its job. The activity is not lost by keeping the first value — it reaches the
+        // panel as `lastToolName`, which this merge still admits.
+        ...(prev.description !== undefined ? { description: prev.description } : {}),
+        // Being backgrounded is one-way: `is_backgrounded` rides a single `task_updated`,
+        // and every later event re-derives `kind` without it, so an admitted progress tick
+        // would drop the Background badge off a task that is still in the background.
+        ...(prev.isBackgrounded === true
+          ? { taskKind: prev.taskKind ?? 'background', isBackgrounded: true }
+          : {}),
         type: 'subagent_task',
       };
       this.changed = true;
